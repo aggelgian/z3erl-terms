@@ -170,7 +170,9 @@ check_one(Term) ->
 
 main() ->
   {ok, Bin} = file:read_file("z3erl.erl"),
-  Tests = [42, ok, {42,ok}, <<1>>, [42|ok], [42, foo, <<1,4:5>>, {}], 3.14, Bin],
+  Tests = [42, ok, {42,ok}, <<1>>, [42|ok], [42, foo, <<1,4:5>>, {}], 3.14
+%    , Bin
+  ],
   F = fun(T) ->
       io:format("Testing ~p ... ", [T]),
       R = check_one(T),
