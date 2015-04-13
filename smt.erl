@@ -136,34 +136,36 @@ eval(Port, V) ->
   load(Port, [z3erl:eval(V)]),
   parse(get_response(Port)).
 
-main() ->
+
+check_one(Term) ->
   Port = open_port({spawn, "z3 -smt2 -in"}, [in, out]),
-  InitVars = [{'var', "x"}, {'var', "y"}],
-  {[X, _Y], Env, VarsDef} = variables(InitVars),
-  try
-    load(Port, [type_system(), VarsDef]),
-    Axs = [
-      z3erl:assert(
-        z3erl:equal(X, encode([1,2,ok,{42},<<1:1>>]))
-      )
-    ],
-    load(Port, Axs),
-    case check(Port) of
-      "sat" ->
-        io:format("SAT~n"),
-        Val = eval(Port, X),
-        io:format("[~p] ~p~n", [X, Val]);
-      Msg ->
-        io:format("NOT SAT: ~p~n", [Msg])
-    end
-  catch throw:T ->
-    io:format("[THROW] ~p~n", [T])
-  after
-    ets:delete(Env),
-    port_close(Port)
-  end.
+  InitVars = [{'var', "x"}],
+  {[X], Env, VarsDef} = variables(InitVars),
+  load(Port, [type_system(), VarsDef]),
+  Axs = [
+    z3erl:assert(
+      z3erl:equal(X, encode(Term))
+    )
+  ],
+  load(Port, Axs),
+  R = case check(Port) of
+        "sat" -> eval(Port, X);
+        Msg -> {error, Msg}
+      end,
+  ets:delete(Env),
+  port_close(Port),
+  R.
 
-
+main() ->
+  Tests = [42, ok, {42,ok}, <<1>>, [42|ok], [42, foo, <<1,4:5>>, {}]],
+  F = fun(T) ->
+      io:format("Testing ~p ... ", [T]),
+      case check_one(T) =:= T of
+        true -> io:format("OK~n");
+        false -> io:format("FAIL~n")
+      end
+    end,
+  lists:foreach(F, Tests).
 
 
 
@@ -171,9 +173,21 @@ main() ->
 %% PARSER
 
 parse(Str) ->
-  {ok, Tokens, _EndLine} = smt_lexer:string(Str),
-  {ok, Term} = smt_parser:parse(Tokens),
-  decode(Term, dict:new()).
+  try
+    {ok, Tokens, _EndLine} = smt_lexer:string(Str),
+    {ok, Term} = smt_parser:parse(Tokens),
+    try_decode(Term)
+  catch
+    error:_ -> Str
+  end.
+
+try_decode(Term) ->
+%  io:format("Decoding ~p~n", [Term]),
+  try
+    decode(Term, dict:new())
+  catch
+    error:_ -> Term
+  end.
 
 decode({var, SAT}, _Env) when SAT =:= "sat" ->
   SAT;
