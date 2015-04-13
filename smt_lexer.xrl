@@ -9,9 +9,10 @@ Rules.
 
 let              : {token, {'let', TokenLine}}.
 {Cs}             : {token, {atom(TokenChars), TokenLine}}.
-[()]             : {token, {atom(TokenChars), TokenLine}}.
+[()\/]           : {token, {atom(TokenChars), TokenLine}}.
 {D}+             : {token, {integer, TokenLine, list_to_integer(TokenChars)}}.
 \#b(0|1)+        : {token, {bitval, TokenLine, bits(TokenChars)}}.
+{D}+\.{D}+       : {token, {floatlit, TokenLine, list_to_float(TokenChars)}}.
 {L}+(\!{D}+)?    : {token, {strlit, TokenLine, TokenChars}}.
 {WS}+            : skip_token.
 

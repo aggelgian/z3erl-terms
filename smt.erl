@@ -157,12 +157,13 @@ check_one(Term) ->
   R.
 
 main() ->
-  Tests = [42, ok, {42,ok}, <<1>>, [42|ok], [42, foo, <<1,4:5>>, {}]],
+  Tests = [42, ok, {42,ok}, <<1>>, [42|ok], [42, foo, <<1,4:5>>, {}], 3.14],
   F = fun(T) ->
       io:format("Testing ~p ... ", [T]),
-      case check_one(T) =:= T of
+      R = check_one(T),
+      case R =:= T of
         true -> io:format("OK~n");
-        false -> io:format("FAIL~n")
+        false -> io:format("FAIL~n  ~p~n", [R])
       end
     end,
   lists:foreach(F, Tests).
@@ -198,6 +199,8 @@ decode(nil, _Env) ->
 decode({int, {var, _}=X}, Env) ->
   decode(X, Env);
 decode({int, X}, _Env) ->
+  X;
+decode({flt, X}, _Env) ->
   X;
 decode({atm, {var, _}=X}, Env) ->
   decode(X, Env);

@@ -1,9 +1,9 @@
 Nonterminals
 term letdef localdefs localdef expr.
 
-Terminals '(' ')'
+Terminals '(' ')' '/'
 'let' nil int flt lst tpl atm bin tnil tcons inil icons bnil bcons
-integer bitval strlit.
+integer bitval strlit floatlit.
 
 Rootsymbol term.
 
@@ -26,6 +26,7 @@ expr -> '(' int expr ')' : {int, '$3'}.
 
 %% Floats
 expr -> '(' flt expr ')' : {flt, '$3'}.
+expr -> '(' '/' floatlit floatlit ')' : (unwrap('$3') / unwrap('$4')).
 
 %% Atoms
 expr -> '(' atm expr ')' : {atm, '$3'}.
@@ -44,7 +45,6 @@ expr -> '(' tcons expr expr ')' : {tcons, '$3', '$4'}.
 expr -> '(' bin expr ')' : {bin, '$3'}.
 expr -> bnil : bnil.
 expr -> '(' bcons bitval expr ')' : {bcons, unwrap('$3'), '$4'}.
-
 
 Erlang code.
 
