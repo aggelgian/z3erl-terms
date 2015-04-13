@@ -31,7 +31,7 @@ type_system() ->
   Base = z3erl:declare_datatypes([], BDs),
   EDs = [
     %% Term
-    {"Term", [ {"base", [{"mk-", "BaseTerm"}]}
+    {"Term", [ {"base", [{"btval", "BaseTerm"}]}
              ]}
   ],
   Ext = z3erl:declare_datatypes([], EDs),
@@ -42,7 +42,7 @@ type_system() ->
 %% Term
 base(X) -> z3erl:constructor("base", [X]).
 is_base(X) -> z3erl:is_constructor("base", X).
-btval(X) -> z3erl:accessor("mk-", X).
+btval(X) -> z3erl:accessor("btval", X).
 %% BaseTerm
 nil() -> z3erl:constructor("nil", []).
 int(X) -> z3erl:constructor("int", [X]).
