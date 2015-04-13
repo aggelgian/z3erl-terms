@@ -7,17 +7,17 @@
 type_system() ->
   Ds = [
     %% Term
-    {"Term", [ {"nil", []}
+    {"BaseTerm", [ {"nil", []}
              , {"int", [{"ival", "Int"}]}
              , {"flt", [{"fval", "Real"}]}
-             , {"lst", [{"hd", "Term"}, {"tl", "Term"}]}
+             , {"lst", [{"hd", "BaseTerm"}, {"tl", "BaseTerm"}]}
              , {"tpl", [{"tval", "TermList"}]}
              , {"atm", [{"aval", "IntList"}]}
              , {"bin", [{"bval", "BitList"}]}
              ]},
     %% TermList
     {"TermList", [ {"tnil", []}
-                 , {"tcons", [{"thd", "Term"}, {"ttl", "TermList"}]}
+                 , {"tcons", [{"thd", "BaseTerm"}, {"ttl", "TermList"}]}
                  ]},
     %% IntList
     {"IntList", [ {"inil", []}
@@ -116,7 +116,7 @@ is_variable(_) -> false.
 
 variables(Symbs) ->
   Vs = ["x" ++ integer_to_list(I) || I <- lists:seq(1, length(Symbs))],
-  Smt = [z3erl:declare_const(V, "Term") || V <- Vs],
+  Smt = [z3erl:declare_const(V, "BaseTerm") || V <- Vs],
   Env = ets:new(?MODULE, [set, protected]),
   ets:insert(Env, lists:zip(Symbs, Vs)),
   {Vs, Env, Smt}.
