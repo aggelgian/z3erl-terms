@@ -2,7 +2,7 @@ Definitions.
 
 D  = [0-9]
 L  = [A-Za-z]
-Cs = (nil|int|flt|lst|tpl|atm|bin|tnil|tcons|inil|icons|bnil|bcons)
+Cs = (base|nil|int|flt|lst|tpl|atm|bin|tnil|tcons|inil|icons|bnil|bcons)
 WS = [\000-\s]
 
 Rules.

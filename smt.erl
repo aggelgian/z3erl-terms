@@ -5,19 +5,19 @@
 
 %% Define the type system.
 type_system() ->
-  Ds = [
-    %% Term
+  BDs = [
+    %% BaseTerm
     {"BaseTerm", [ {"nil", []}
              , {"int", [{"ival", "Int"}]}
              , {"flt", [{"fval", "Real"}]}
              , {"lst", [{"hd", "BaseTerm"}, {"tl", "BaseTerm"}]}
-             , {"tpl", [{"tval", "TermList"}]}
+             , {"tpl", [{"tval", "BaseTermList"}]}
              , {"atm", [{"aval", "IntList"}]}
              , {"bin", [{"bval", "BitList"}]}
              ]},
-    %% TermList
-    {"TermList", [ {"tnil", []}
-                 , {"tcons", [{"thd", "BaseTerm"}, {"ttl", "TermList"}]}
+    %% BaseTermList
+    {"BaseTermList", [ {"tnil", []}
+                 , {"tcons", [{"thd", "BaseTerm"}, {"ttl", "BaseTermList"}]}
                  ]},
     %% IntList
     {"IntList", [ {"inil", []}
@@ -28,11 +28,22 @@ type_system() ->
                 , {"bcons", [{"bhd", "(_ BitVec 1)"}, {"btl", "BitList"}]}
                 ]}
   ],
-  z3erl:declare_datatypes([], Ds).
+  Base = z3erl:declare_datatypes([], BDs),
+  EDs = [
+    %% Term
+    {"Term", [ {"base", [{"mk-", "BaseTerm"}]}
+             ]}
+  ],
+  Ext = z3erl:declare_datatypes([], EDs),
+  [Base, Ext].
 
 %% Auxiliary funs
 
 %% Term
+base(X) -> z3erl:constructor("base", [X]).
+is_base(X) -> z3erl:is_constructor("base", X).
+btval(X) -> z3erl:accessor("mk-", X).
+%% BaseTerm
 nil() -> z3erl:constructor("nil", []).
 int(X) -> z3erl:constructor("int", [X]).
 flt(X) -> z3erl:constructor("flt", [X]).
@@ -54,7 +65,7 @@ aval(X) -> z3erl:accessor("aval", X).
 bval(X) -> z3erl:accessor("bval", X).
 hdval(X) -> z3erl:accessor("hd", X).
 tlval(X) -> z3erl:accessor("tl", X).
-%% TermList
+%% BaseTermList
 tnil() -> z3erl:constructor("tnil", []).
 tcons(X, Xs) -> z3erl:constructor("tcons", [X, Xs]).
 is_tnil(X) -> z3erl:is_constructor("tnil", X).
@@ -77,25 +88,30 @@ bhd(X) -> z3erl:accessor("bhd", X).
 btl(X) -> z3erl:accessor("btl", X).
 
 %% Encode an Erlang term to its representation.
-encode([]) ->
+encode(X) when is_function(X); is_map(X) ->
+  throw(todo);
+encode(X) ->
+  base(encode_base(X)).
+
+encode_base([]) ->
   nil();
-encode(X) when is_integer(X) ->
+encode_base(X) when is_integer(X) ->
   int(integer_to_list(X));
-encode(X) when is_float(X) ->
+encode_base(X) when is_float(X) ->
   flt(float_to_list(X, [{decimals, 10}]));
-encode([X|Xs]) ->
-  lst(encode(X), encode(Xs));
-encode(X) when is_tuple(X) ->
+encode_base([X|Xs]) ->
+  lst(encode_base(X), encode_base(Xs));
+encode_base(X) when is_tuple(X) ->
   tpl(encode_tlist(tuple_to_list(X)));
-encode(X) when is_atom(X) ->
+encode_base(X) when is_atom(X) ->
   atm(encode_ilist(atom_to_list(X)));
-encode(X) when is_bitstring(X) ->
+encode_base(X) when is_bitstring(X) ->
   bin(encode_blist(X)).
 
 encode_tlist([]) ->
   tnil();
 encode_tlist([X|Xs]) ->
-  tcons(encode(X), encode_tlist(Xs)).
+  tcons(encode_base(X), encode_tlist(Xs)).
 
 encode_ilist([]) ->
   inil();
@@ -116,7 +132,7 @@ is_variable(_) -> false.
 
 variables(Symbs) ->
   Vs = ["x" ++ integer_to_list(I) || I <- lists:seq(1, length(Symbs))],
-  Smt = [z3erl:declare_const(V, "BaseTerm") || V <- Vs],
+  Smt = [z3erl:declare_const(V, "Term") || V <- Vs],
   Env = ets:new(?MODULE, [set, protected]),
   ets:insert(Env, lists:zip(Symbs, Vs)),
   {Vs, Env, Smt}.
@@ -146,6 +162,8 @@ loop_eval_response(Port, Acc) ->
       loop_eval_response(Port, [R|Acc])
   end.
 
+%% TEST
+
 check_one(Term) ->
   Port = open_port({spawn, "z3 -smt2 -in"}, [in, out, {line, 10000000}]),
   InitVars = [{'var', "x"}],
@@ -153,7 +171,7 @@ check_one(Term) ->
   Pms = [
 %    "(set-option :pp.single_line true)"
   ],
-  load(Port, [Pms, type_system(), VarsDef]),
+  load(Port, [Pms | type_system()] ++ [VarsDef]),
   Axs = [
     z3erl:assert(
       z3erl:equal(X, encode(Term))
@@ -209,6 +227,8 @@ decode({var, SAT}, _Env) when SAT =:= "sat" ->
   SAT;
 decode({var, X}, Env) ->
   dict:fetch(X, Env);
+decode({base, X}, Env) ->
+  decode(X, Env);
 decode(nil, _Env) ->
   [];
 decode({int, {var, _}=X}, Env) ->

@@ -2,7 +2,7 @@ Nonterminals
 term letdef localdefs localdef expr.
 
 Terminals '(' ')' '/'
-'let' nil int flt lst tpl atm bin tnil tcons inil icons bnil bcons
+'let' base nil int flt lst tpl atm bin tnil tcons inil icons bnil bcons
 integer bitval strlit floatlit.
 
 Rootsymbol term.
@@ -20,6 +20,9 @@ expr -> letdef : '$1'.
 expr -> strlit : {var, unwrap('$1')}.
 expr -> integer : unwrap('$1').
 expr -> nil : nil.
+
+%% BaseTerm
+expr -> '(' base expr ')' : {base, '$3'}.
 
 %% Integers
 expr -> '(' int expr ')' : {int, '$3'}.
