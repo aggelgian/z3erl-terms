@@ -126,22 +126,34 @@ load(Port, Axs) ->
   lists:foreach(fun(Ax) -> port_command(Port, [Ax, io_lib:nl()]) end, Axs).
 
 get_response(Port) ->
-  receive {Port, {data, Resp}} -> Resp after 1000 -> throw(noreponse) end.
+  receive {Port, {data, {_Flag, Resp}}} -> Resp after 10000 -> throw(noreponse) end.
 
 check(Port) ->
   load(Port, [z3erl:check()]),
   parse(get_response(Port)).
 
 eval(Port, V) ->
-  load(Port, [z3erl:eval(V)]),
-  parse(get_response(Port)).
+  load(Port, [z3erl:eval(V), "(display 42)"]),
+  loop_eval_response(Port, []).
 
+loop_eval_response(Port, Acc) ->
+  case get_response(Port) of
+    "42" ->
+      Ps = lists:reverse(Acc),
+      parse(string:join(Ps, ""));
+    R ->
+%      io:format("Got ~p~n", [R]),
+      loop_eval_response(Port, [R|Acc])
+  end.
 
 check_one(Term) ->
-  Port = open_port({spawn, "z3 -smt2 -in"}, [in, out]),
+  Port = open_port({spawn, "z3 -smt2 -in"}, [in, out, {line, 10000000}]),
   InitVars = [{'var', "x"}],
   {[X], Env, VarsDef} = variables(InitVars),
-  load(Port, [type_system(), VarsDef]),
+  Pms = [
+%    "(set-option :pp.single_line true)"
+  ],
+  load(Port, [Pms, type_system(), VarsDef]),
   Axs = [
     z3erl:assert(
       z3erl:equal(X, encode(Term))
@@ -157,7 +169,8 @@ check_one(Term) ->
   R.
 
 main() ->
-  Tests = [42, ok, {42,ok}, <<1>>, [42|ok], [42, foo, <<1,4:5>>, {}], 3.14],
+  {ok, Bin} = file:read_file("z3erl.erl"),
+  Tests = [42, ok, {42,ok}, <<1>>, [42|ok], [42, foo, <<1,4:5>>, {}], 3.14, Bin],
   F = fun(T) ->
       io:format("Testing ~p ... ", [T]),
       R = check_one(T),
