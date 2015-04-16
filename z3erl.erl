@@ -36,6 +36,8 @@ eval(X) -> "(eval " ++ X ++ ")".
 
 get_value(X) -> "(get-value (" ++ X ++ "))".
 
+get_model() -> "(get-model)".
+
 -spec is_constructor(string(), string()) -> smt2().
 is_constructor(Constr, X) -> string:join(["(is-", Constr, " ", X, ")"], "").
 

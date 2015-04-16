@@ -32,6 +32,7 @@ type_system() ->
   EDs = [
     %% Term
     {"Term", [ {"base", [{"btval", "BaseTerm"}]}
+             , {"mmap", [{"mval", "(Array BaseTerm BaseTerm)"}]}
              ]}
   ],
   Ext = z3erl:declare_datatypes([], EDs),
@@ -41,8 +42,11 @@ type_system() ->
 
 %% Term
 base(X) -> z3erl:constructor("base", [X]).
+mmap(X) -> z3erl:constructor("mmap", [X]).
 is_base(X) -> z3erl:is_constructor("base", X).
+is_mmap(X) -> z3erl:is_constructor("mmap", X).
 btval(X) -> z3erl:accessor("btval", X).
+mval(X) -> z3erl:accessor("mval", X).
 %% BaseTerm
 nil() -> z3erl:constructor("nil", []).
 int(X) -> z3erl:constructor("int", [X]).
@@ -88,10 +92,12 @@ bhd(X) -> z3erl:accessor("bhd", X).
 btl(X) -> z3erl:accessor("btl", X).
 
 %% Encode an Erlang term to its representation.
-encode(X) when is_function(X); is_map(X) ->
+encode(X) when is_function(X) ->
   throw(todo);
+encode(X) when is_map(X) ->
+  encode_map(X);
 encode(X) ->
-  base(encode_base(X)).
+  {[], base(encode_base(X))}.
 
 encode_base([]) ->
   nil();
@@ -126,6 +132,28 @@ encode_blist(<<X:1, Xs/bitstring>>) ->
     1 -> bcons("#b1", encode_blist(Xs))
   end.
 
+encode_map(X) ->
+  A = "a" ++ integer_to_list(cnt_array()),
+  Smt = z3erl:declare_const(A, "(Array BaseTerm BaseTerm)"),
+  F = fun(K, V, Acc) ->
+      EK = encode_base(K),
+      EV = encode_base(V),
+      Ax = z3erl:assert(z3erl:equal( "(select "++A++" "++EK++")", EV )),
+      [Ax|Acc]
+    end,
+  MsAxs = maps:fold(F, [], X),
+  {[Smt|MsAxs], mmap(A)}.
+
+cnt_array() ->
+  case get(array_cnt) of
+    undefined ->
+      put(array_cnt, 1),
+      1;
+    N ->
+      put(array_cnt, N+1),
+      N+1
+  end.
+
 %% Set variables
 is_variable({'var', _}) -> true;
 is_variable(_) -> false.
@@ -148,6 +176,10 @@ check(Port) ->
   load(Port, [z3erl:check()]),
   parse(get_response(Port)).
 
+get_model(Port) ->
+  load(Port, [z3erl:get_model(), "(display 42)"]),
+  loop_eval_response(Port, []).
+
 eval(Port, V) ->
   load(Port, [z3erl:eval(V), "(display 42)"]),
   loop_eval_response(Port, []).
@@ -164,6 +196,43 @@ loop_eval_response(Port, Acc) ->
 
 %% TEST
 
+test() ->
+  Port = open_port({spawn, "z3 -smt2 -in"}, [in, out, {line, 10000000}]),
+  InitVars = [{'var', "x"}, {'var', "y"}],
+  {[X, Y], Env, VarsDef} = variables(InitVars),
+  Pms = [
+%    "(set-option :pp.single_line true)"
+  ],
+  load(Port, [Pms | type_system()] ++ [VarsDef]),
+  {EncAxs, EncX} = encode(#{1 => 1, 2 => 2, ok => ok, [] => {}}),
+  load(Port, EncAxs),
+  Axs = [
+%    z3erl:assert(
+%%      z3erl:equal(X, encode(<<1>>))
+%      is_mmap(X)
+%    ),
+    z3erl:assert(
+      z3erl:equal(X, EncX)
+    ),
+    z3erl:assert(
+%      z3erl:equal(Y, encode(<<1, 42>>))
+      is_mmap(Y)
+    )
+  ],
+  load(Port, Axs),
+  case check(Port) of
+    "sat" ->
+      {model, Md} = get_model(Port),
+      [{X, true, Vx}] = ets:lookup(Md, X),
+      io:format("~p~n  ~p~n", [X, Vx]),
+      [{Y, true, Vy}] = ets:lookup(Md, Y),
+      io:format("~p~n  ~p~n", [Y, Vy]);
+    Msg -> {error, Msg}
+  end,
+  ets:delete(Env),
+  port_close(Port).
+
+
 check_one(Term) ->
   Port = open_port({spawn, "z3 -smt2 -in"}, [in, out, {line, 10000000}]),
   InitVars = [{'var', "x"}],
@@ -172,9 +241,11 @@ check_one(Term) ->
 %    "(set-option :pp.single_line true)"
   ],
   load(Port, [Pms | type_system()] ++ [VarsDef]),
+  {EncAxs, EncTerm} = encode(Term),
+  load(Port, EncAxs),
   Axs = [
     z3erl:assert(
-      z3erl:equal(X, encode(Term))
+      z3erl:equal(X, EncTerm)
     )
   ],
   load(Port, Axs),
@@ -210,98 +281,167 @@ parse(Str) ->
   try
     {ok, Tokens, _EndLine} = smt_lexer:string(Str),
     {ok, Term} = smt_parser:parse(Tokens),
-    try_decode(Term)
+    try
+      decode_ast(Term)
+    catch
+      error:_ -> io:format("~p~n~n", [Term])
+    end
   catch
-    error:_ -> Str
+    error:_ -> io:format("~p~n~n", [Str])
   end.
 
-try_decode(Term) ->
-%  io:format("Decoding ~p~n", [Term]),
-  try
-    decode(Term, dict:new())
-  catch
-    error:_ -> Term
+decode_ast(AST) when is_list(AST) ->
+  Md = ets:new(?MODULE, [set, protected]),
+  F = fun({fundef, {var, V}, FunInfo}, Acc) ->
+      ets:insert(Md, {V, false, FunInfo}),
+      [V|Acc]
+    end,
+  Ks = lists:foldl(F, [], AST),
+  lists:foreach(fun(K) -> decode_fun(K, Md) end, Ks),
+  {model, Md};
+decode_ast(AST) ->
+  decode(AST, [], dict:new(), none).
+
+
+decode_fun(Key, Md) ->
+  [{Key, IsEvaluated, Val}] = ets:lookup(Md, Key),
+  case IsEvaluated of
+    true -> ok;
+    false ->
+      Decd = decode_funinfo(Val, Md),
+      ets:insert(Md, [{Key, true, Decd}])
   end.
 
-decode({var, SAT}, _Env) when SAT =:= "sat" ->
+decode_funinfo({funinfo, Params, {var, _RetType}, Body}, Md) ->
+  Ps = [P || {param, {var, P}, {var, _Type}} <- Params],
+  decode(Body, Ps, dict:new(), Md).
+
+
+
+decode({var, SAT}, _Pms, _Env, _Md) when SAT =:= "sat" ->
   SAT;
-decode({var, X}, Env) ->
-  dict:fetch(X, Env);
-decode({base, X}, Env) ->
-  decode(X, Env);
-decode(nil, _Env) ->
+decode({var, X}, _Pms, Env, Md) ->
+  case dict:is_key(X, Env) of
+    true -> dict:fetch(X, Env);
+    false ->
+      decode_fun(X, Md),
+      [{X, true, Val}] = ets:lookup(Md, X),
+      Val
+  end;
+decode({base, X}, Pms, Env, Md) ->
+  decode(X, Pms, Env, Md);
+decode(nil, _Pms, _Env, _Md) ->
   [];
-decode({int, {var, _}=X}, Env) ->
-  decode(X, Env);
-decode({int, X}, _Env) ->
+decode({int, {var, _}=X}, Pms, Env, Md) ->
+  decode(X, Pms, Env, Md);
+decode({int, X}, _Pms, _Env, _Md) when is_integer(X) ->
   X;
-decode({flt, X}, _Env) ->
+decode({flt, {var, _}=X}, Pms, Env, Md) ->
+  decode(X, Pms, Env, Md);
+decode({flt, X}, _Pms, _Env, _Md) when is_float(X) ->
   X;
-decode({atm, {var, _}=X}, Env) ->
-  decode(X, Env);
-decode({atm, X}, Env) ->
-  L = decode_ilist(X, [], Env),
+decode({atm, {var, _}=X}, Pms, Env, Md) ->
+  decode(X, Pms, Env, Md);
+decode({atm, X}, Pms, Env, Md) ->
+  L = decode_ilist(X, [], Pms, Env, Md),
   to_atom(L);
-decode({lst, X, Xs}, Env) ->
-  [decode(X, Env)|decode(Xs, Env)];
-decode({tpl, {var, _}=X}, Env) ->
-  decode(X, Env);
-decode({tpl, X}, Env) ->
-  L = decode_tlist(X, [], Env),
+decode({lst, X, Xs}, Pms, Env, Md) ->
+  [decode(X, Pms, Env, Md) | decode(Xs, Pms, Env, Md)];
+decode({tpl, {var, _}=X}, Pms, Env, Md) ->
+  decode(X, Pms, Env, Md);
+decode({tpl, X}, Pms, Env, Md) ->
+  L = decode_tlist(X, [], Pms, Env, Md),
   list_to_tuple(L);
-decode({bin, {var, _}=X}, Env) ->
-  decode(X, Env);
-decode({bin, X}, Env) ->
-  decode_blist(X, [], Env);
-decode({'let', Defs, X}, Env) ->
-  F = fun({K, V}, Acc) -> dict:store(K, decode_partial(V, Acc), Acc) end,
-  decode(X, lists:foldl(F, Env, Defs)).
+decode({bin, {var, _}=X}, Pms, Env, Md) ->
+  decode(X, Pms, Env, Md);
+decode({bin, X}, Pms, Env, Md) ->
+  decode_blist(X, [], Pms, Env, Md);
+decode({'let', Defs, Body}, Pms, Env, Md) ->
+  F = fun({K, V}, Acc) ->
+      EV = decode_partial(V, Pms, Acc, Md),
+      dict:store(K, EV, Acc)
+    end,
+  decode(Body, Pms, lists:foldl(F, Env, Defs), Md);
+decode({mmap, X}, Pms, Env, Md) ->
+  Val = decode(X, Pms, Env, Md),
+  case is_map(Val) of
+    true  -> Val;
+    false -> #{}
+  end;
+decode({as_array, {var, X}}, _Pms, _Env, Md) ->
+  decode_fun(X, Md),
+  [{X, true, Val}] = ets:lookup(Md, X),
+  Val;
+decode({'if', _, _, _}=X, Pms, Env, Md) ->
+  decode_if(X, #{}, Pms, Env, Md).
 
-
-decode_ilist(inil, Acc, _Env) ->
+decode_ilist(inil, Acc, _Pms, _Env, _Md) ->
   lists:reverse(Acc);
-decode_ilist({icons, X, {var, Var}}, Acc, Env) ->
+decode_ilist({var, Var}, Acc, _Pms, Env, _Md) ->
   Val = dict:fetch(Var, Env),
   F = fun(I, Is) -> [I|Is] end,
-  lists:foldl(F, [X|Val], Acc);
-decode_ilist({icons, X, Xs}, Acc, Env) ->
-  decode_ilist(Xs, [X|Acc], Env).
+  lists:foldl(F, Val, Acc);
+decode_ilist({icons, X, Xs}, Acc, Pms, Env, Md) ->
+  decode_ilist(Xs, [X|Acc], Pms, Env, Md).
 
-decode_tlist(tnil, Acc, _Env) ->
+decode_tlist(tnil, Acc, _Pms, _Env, _Md) ->
   lists:reverse(Acc);
-decode_tlist({tcons, X, {var, Var}}, Acc, Env) ->
+decode_tlist({var, Var}, Acc, _Pms, Env, _Md) ->
   Val = dict:fetch(Var, Env),
   F = fun(T, Ts) -> [T|Ts] end,
-  lists:foldl(F, [decode(X, Env)|Val], Acc);
-decode_tlist({tcons, X, Xs}, Acc, Env) ->
-  decode_tlist(Xs, [decode(X, Env)|Acc], Env).
+  lists:foldl(F, Val, Acc);
+decode_tlist({tcons, X, Xs}, Acc, Pms, Env, Md) ->
+  DX = decode(X, Pms, Env, Md),
+  decode_tlist(Xs, [DX|Acc], Pms, Env, Md).
 
-decode_blist(bnil, Acc, _Env) ->
+decode_blist(bnil, Acc, _Pms, _Env, _Md) ->
   F = fun(Bits, Bin) ->
       N = list_to_integer(Bits),
       L = length(Bits),
       <<N:L, Bin/bitstring>>
     end,
   lists:foldl(F, <<>>, Acc);
-decode_blist({bcons, Bits, {var, Var}}, Acc, Env) ->
+decode_blist({var, Var}, Acc, _Pms, Env, _Md) ->
   Val = dict:fetch(Var, Env),
-  F = fun(Bs, Bin) ->
-      N = list_to_integer(Bs),
-      L = length(Bs),
+  F = fun(Bits, Bin) ->
+      N = list_to_integer(Bits),
+      L = length(Bits),
       <<N:L, Bin/bitstring>>
     end,
-  lists:foldl(F, Val, [Bits|Acc]);
-decode_blist({bcons, Bits, Rest}, Acc, Env) ->
-  decode_blist(Rest, [Bits|Acc], Env).
+  lists:foldl(F, Val, Acc);
+decode_blist({bcons, Bits, Rest}, Acc, Pms, Env, Md) ->
+  decode_blist(Rest, [Bits|Acc], Pms, Env, Md).
 
+decode_if({var, Var}, Acc, _Pms, Env, _Md) ->
+  Val = dict:fetch(Var, Env),
+  maps:merge(Val, Acc);
+decode_if({'if', {eq, {var, P}, CExpr}, TExpr, FExpr}, Acc, Pms, Env, Md) ->
+  Key = decode(CExpr, Pms, Env, Md),
+  Val = case TExpr of
+          {var, Var} -> dict:fetch(Var, Env);
+          _ -> decode(TExpr, Pms, Env, Md)
+        end,
+  decode_if(FExpr, maps:put(Key, Val, Acc), Pms, Env, Md);
+decode_if(_, Acc, _Pms, _Env, _Md) ->
+  Acc.
 
-decode_partial(inil=X, Env) -> decode_ilist(X, [], Env);
-decode_partial({icons, _, _}=X, Env) -> decode_ilist(X, [], Env);
-decode_partial(tnil=X, Env) -> decode_tlist(X, [], Env);
-decode_partial({tcons, _, _}=X, Env) -> decode_tlist(X, [], Env);
-decode_partial(bnil=X, Env) -> decode_blist(X, [], Env);
-decode_partial({bcons, _, _}=X, Env) -> decode_blist(X, [], Env);
-decode_partial(X, Env) -> decode(X, Env).
+decode_partial(inil, Pms, Env, Md) ->
+  decode_ilist(inil, [], Pms, Env, Md);
+decode_partial({icons, _, _}=X, Pms, Env, Md) ->
+  decode_ilist(X, [], Pms, Env, Md);
+decode_partial(tnil, Pms, Env, Md) ->
+  decode_tlist(tnil, [], Pms, Env, Md);
+decode_partial({tcons, _, _}=X, Pms, Env, Md) ->
+  decode_tlist(X, [], Pms, Env, Md);
+decode_partial(bnil, Pms, Env, Md) ->
+  decode_blist(bnil, [], Pms, Env, Md);
+decode_partial({bcons, _, _}=X, Pms, Env, Md) ->
+  decode_blist(X, [], Pms, Env, Md);
+decode_partial({'if', _, _, _}=X, Pms, Env, Md) ->
+  decode_if(X, #{}, Pms, Env, Md);
+decode_partial(X, Pms, Env, Md) ->
+  decode(X, Pms, Env, Md).
+
 
 to_atom(L) ->
   try
