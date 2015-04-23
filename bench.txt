@@ -1,0 +1,17 @@
+====== BITSTRINGS ======
+
+Size of term | Length of encoded term | Encode time | Send time | Parse & Solve time | Get time
+-------------+------------------------+-------------+-----------+--------------------+---------
+   100 bytes |             9617 chars |     0.0292s |   0.0001s |            0.0935s |  0.0231s
+   500 bytes |            48017 chars |     0.5668s |   0.0003s |            2.5748s |  0.1066s
+  1024 bytes |            98321 chars |     2.6183s |   0.0006s |           11.9833s |  0.2368s
+  2048 bytes |           196625 chars |    13.0840s |   0.0023s |           69.6968s |  0.5463s
+
+====== LISTS OF INTS ======
+
+Size of term | Length of encoded term | Encode time | Send time | Parse & Solve time | Get time
+-------------+------------------------+-------------+-----------+--------------------+---------
+   100 items |             1502 chars |     0.0005s |   0.0000s |            0.0089s |  0.0045s
+  1000 items |            15903 chars |     0.0510s |   0.0001s |            0.0525s |  0.0369s
+ 10000 items |           168904 chars |     6.3705s |   0.0010s |            8.4106s |  0.4394s
+ 20000 items |           348904 chars |    33.9134s |   0.0020s |           44.2455s |  0.9305s

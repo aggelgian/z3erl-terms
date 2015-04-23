@@ -184,7 +184,7 @@ load(Port, Axs) ->
   lists:foreach(fun(Ax) -> port_command(Port, [Ax, io_lib:nl()]) end, Axs).
 
 get_response(Port) ->
-  receive {Port, {data, {_Flag, Resp}}} -> Resp after 120000 -> throw(noreponse) end.
+  receive {Port, {data, {_Flag, Resp}}} -> Resp after 300000 -> throw(noreponse) end.
 
 check(Port) ->
   load(Port, [z3erl:check()]),
