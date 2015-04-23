@@ -1,4 +1,4 @@
-; http://rise4fun.com/Z3/OS5S
+; http://rise4fun.com/Z3/KPso
 
 (declare-datatypes () ((BaseTerm (nil)
                                  (int (ival Int))
