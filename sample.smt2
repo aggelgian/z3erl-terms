@@ -32,3 +32,26 @@
 
 (check-sat)
 (get-model)
+
+
+;(model
+;  (define-fun x1 () Term
+;    (mmap (_ as-array k!1)))
+;
+;  (define-fun k!1 ((x!1 BaseTerm)) BaseTerm
+;    (ite (= x!1 (atm (icons 111 (icons 107 inil))))
+;      (atm (icons 111 (icons 107 inil)))
+;    (ite (= x!1 nil) (int 0)
+;    (ite (= x!1 (flt (/ 157.0 50.0))) (tpl tnil)
+;    (ite (= x!1 (int 2)) (int 2)
+;    (ite (= x!1 (int 1)) (int 1)
+;      (atm (icons 111 (icons 107 inil)))))))))
+;
+;  (define-fun x2 () Term
+;    (func (fun1 (_ as-array k!0))))
+;    
+;  (define-fun k!0 ((x!1 BaseTerm)) BaseTerm
+;    (ite (= x!1 nil) (int 3)
+;    (ite (= x!1 (int 42)) (atm (icons 111 (icons 107 inil)))
+;      (int 3))))
+;)
