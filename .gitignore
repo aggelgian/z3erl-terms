@@ -1,5 +1,4 @@
 *.beam
 *.dump
-*.smt2
 smt_lexer.erl
 smt_parser.erl
