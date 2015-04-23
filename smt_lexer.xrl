@@ -2,7 +2,7 @@ Definitions.
 
 D  = [0-9]
 L  = [A-Za-z]
-Cs = (base|nil|int|flt|lst|tpl|atm|bin|tnil|tcons|inil|icons|bnil|bcons|mmap)
+Cs = (base|nil|int|flt|lst|tpl|atm|bin|tnil|tcons|inil|icons|bnil|bcons|mmap|func|fun1)
 Ks = (let|model|define-fun|as-array|\_|ite)
 Os = (=)
 WS = [\000-\s]

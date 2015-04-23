@@ -29,24 +29,34 @@ type_system() ->
                 ]}
   ],
   Base = z3erl:declare_datatypes([], BDs),
+  FDs = [
+    %% Fun
+    {"FunTerm", [ {"fun1", [{"f1val", "(Array BaseTerm BaseTerm)"}]}
+                ]}
+  ],
+  Fun = z3erl:declare_datatypes([], FDs),
   EDs = [
     %% Term
     {"Term", [ {"base", [{"btval", "BaseTerm"}]}
              , {"mmap", [{"mval", "(Array BaseTerm BaseTerm)"}]}
+             , {"func", [{"fnval", "FunTerm"}]}
              ]}
   ],
   Ext = z3erl:declare_datatypes([], EDs),
-  [Base, Ext].
+  [Base, Fun, Ext].
 
 %% Auxiliary funs
 
 %% Term
 base(X) -> z3erl:constructor("base", [X]).
 mmap(X) -> z3erl:constructor("mmap", [X]).
+func(X) -> z3erl:constructor("func", [X]).
 is_base(X) -> z3erl:is_constructor("base", X).
 is_mmap(X) -> z3erl:is_constructor("mmap", X).
+is_func(X) -> z3erl:is_constructor("func", X).
 btval(X) -> z3erl:accessor("btval", X).
 mval(X) -> z3erl:accessor("mval", X).
+fnval(X) -> z3erl:accessor("fnval", X).
 %% BaseTerm
 nil() -> z3erl:constructor("nil", []).
 int(X) -> z3erl:constructor("int", [X]).
@@ -90,6 +100,10 @@ is_bnil(X) -> z3erl:is_constructor("bnil", X).
 is_bcons(X) -> z3erl:is_constructor("bcons", X).
 bhd(X) -> z3erl:accessor("bhd", X).
 btl(X) -> z3erl:accessor("btl", X).
+%% FunTerm
+fun1(X) -> z3erl:constructor("fun1", [X]).
+is_fun1(X) -> z3erl:is_constructor("fun1", X).
+f1val(X) -> z3erl:accessor("f1val", X).
 
 %% Encode an Erlang term to its representation.
 encode(X) when is_function(X) ->
@@ -170,7 +184,7 @@ load(Port, Axs) ->
   lists:foreach(fun(Ax) -> port_command(Port, [Ax, io_lib:nl()]) end, Axs).
 
 get_response(Port) ->
-  receive {Port, {data, {_Flag, Resp}}} -> Resp after 10000 -> throw(noreponse) end.
+  receive {Port, {data, {_Flag, Resp}}} -> Resp after 120000 -> throw(noreponse) end.
 
 check(Port) ->
   load(Port, [z3erl:check()]),
@@ -204,7 +218,8 @@ test() ->
 %    "(set-option :pp.single_line true)"
   ],
   load(Port, [Pms | type_system()] ++ [VarsDef]),
-  {EncAxs, EncX} = encode(#{1 => 1, 2 => 2, ok => ok, [] => {}}),
+  {EncAxs, EncX} = encode(#{1 => 1, 2 => 2, ok => ok, 3.14 => {}}),
+%  {EncAxs, EncX} = encode(1),
   load(Port, EncAxs),
   Axs = [
 %    z3erl:assert(
@@ -216,8 +231,9 @@ test() ->
     ),
     z3erl:assert(
 %      z3erl:equal(Y, encode(<<1, 42>>))
-      is_mmap(Y)
-    )
+      is_func(Y)
+    ),
+    z3erl:assert(z3erl:equal("(select "++f1val(fnval(Y))++" (int 42))", encode_base("Bazinga!")))
   ],
   load(Port, Axs),
   case check(Port) of
@@ -226,7 +242,11 @@ test() ->
       [{X, true, Vx}] = ets:lookup(Md, X),
       io:format("~p~n  ~p~n", [X, Vx]),
       [{Y, true, Vy}] = ets:lookup(Md, Y),
-      io:format("~p~n  ~p~n", [Y, Vy]);
+      io:format("~p~n  ~p~n", [Y, Vy]),
+      case is_function(Vy, 1) of
+        false -> ok;
+        true -> io:format("Applying Function to 42 : ~p~n", [catch Vy(42)])
+       end;
     Msg -> {error, Msg}
   end,
   ets:delete(Env),
@@ -368,12 +388,20 @@ decode({mmap, X}, Pms, Env, Md) ->
     true  -> Val;
     false -> #{}
   end;
+decode({fun1, X}, Pms, Env, Md) ->
+  Val = decode(X, Pms, Env, Md),
+  case is_map(Val) of
+    true  -> fun(K) -> maps:get(K, Val) end;
+    false -> fun(_) -> Val end
+  end;
 decode({as_array, {var, X}}, _Pms, _Env, Md) ->
   decode_fun(X, Md),
   [{X, true, Val}] = ets:lookup(Md, X),
   Val;
 decode({'if', _, _, _}=X, Pms, Env, Md) ->
-  decode_if(X, #{}, Pms, Env, Md).
+  decode_if(X, #{}, Pms, Env, Md);
+decode({func, X}, Pms, Env, Md) ->
+  decode(X, Pms, Env, Md).
 
 decode_ilist(inil, Acc, _Pms, _Env, _Md) ->
   lists:reverse(Acc);

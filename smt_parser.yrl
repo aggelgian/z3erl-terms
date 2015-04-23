@@ -3,7 +3,7 @@ term letdef localdefs localdef expr modelrepr funDefs funDef funparams funparam 
 
 Terminals '(' ')' '/' '='
 'let' 'define-fun' 'as-array' '_' model ite
-base nil int flt lst tpl atm bin tnil tcons inil icons bnil bcons mmap
+base nil int flt lst tpl atm bin tnil tcons inil icons bnil bcons mmap func fun1
 integer bitval strlit floatlit.
 
 Rootsymbol term.
@@ -73,6 +73,10 @@ expr -> '(' '_' 'as-array' expr ')' : {as_array, '$4'}.
 
 %% Maps
 expr -> '(' mmap expr ')' : {mmap, '$3'}.
+
+%% Funs
+expr -> '(' fun1 expr ')' : {fun1, '$3'}.
+expr -> '(' func expr ')' : {func, '$3'}.
 
 %% Operators
 expr -> '(' ite expr expr expr ')' : {'if', '$3', '$4', '$5'}.

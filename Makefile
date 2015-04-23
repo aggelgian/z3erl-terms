@@ -10,7 +10,8 @@ SRC_MODULES = \
 	z3erl \
 	smt \
 	smt_lexer \
-	smt_parser
+	smt_parser \
+	test_smt
 
 default: $(SRC_MODULES:%=%.beam)
 
