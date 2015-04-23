@@ -24,7 +24,7 @@ test_category(Tests) ->
   F = fun(T) ->
       {R, EncT, TEnc, TLoad, TSolve, TGet} = test_one(T),
       R = T,
-      {Unit, Sz} = sz(T),
+      {Unit, Sz} = sz(R),
       io:format("~6.w ~s | ~16.w chars | ~10.4fs | ~8.4fs | ~17.4fs | ~7.4fs~n", [Sz, Unit, length(EncT), TEnc, TLoad, TSolve, TGet])
     end,
   lists:foreach(F, Tests).
@@ -44,7 +44,8 @@ test_one(Term) ->
   T3 = erlang:now(),
   "sat" = smt:check(Port),
   T4 = erlang:now(),
-  R = smt:eval(Port, X),
+  {model, Md} = smt:get_model(Port),
+  [{X, true, R}] = ets:lookup(Md, X),
   T5 = erlang:now(),
   ets:delete(Env),
   port_close(Port),
