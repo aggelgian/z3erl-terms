@@ -11,7 +11,8 @@
                                       (tcons (thd BaseTerm) (ttl BaseTermList)))
                         (IntList (inil)
                                  (icons (ihd Int) (itl IntList)))
-                        (BitList (bnil) (bcons (bhd (_ BitVec 1)) (btl BitList)))))
+                        (BitList (bnil) 
+                                 (bcons (bhd (_ BitVec 1)) (btl BitList)))))
                         
 (declare-datatypes () ((FunTerm (fun1 (f1val (Array BaseTerm BaseTerm))))))
 (declare-datatypes () ((Term (base (btval BaseTerm))
